@@ -1,0 +1,16 @@
+{
+  "name": "image-upload-compress-cloudflare-based",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "wasm-image-optimization": "^1.0.1",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
