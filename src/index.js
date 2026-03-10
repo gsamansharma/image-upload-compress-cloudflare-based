@@ -2,6 +2,27 @@ import { optimizeImage } from 'wasm-image-optimization';
 
 export default {
     async fetch(request, env, ctx) {
+        if (request.method === 'GET') {
+            const url = new URL(request.url);
+            const key = url.pathname.slice(1);
+
+            if (!key) {
+                return new Response('No file specified', { status: 400 });
+            }
+
+            const object = await env.BUCKET.get(key);
+
+            if (object === null) {
+                return new Response('File not found', { status: 404 });
+            }
+
+            const headers = new Headers();
+            object.writeHttpMetadata(headers);
+            headers.set('etag', object.httpEtag);
+
+            return new Response(object.body, { headers });
+        }
+
         if (request.method !== 'POST') {
             return new Response('Method not allowed', { status: 405 });
         }
@@ -33,12 +54,30 @@ export default {
                 format: 'webp'
             });
 
-            return new Response(compressedBuffer, {
-                headers: {
-                    'Content-Type': 'image/webp',
-                    'X-Original-Size': inputBuffer.byteLength.toString(),
-                    'X-Compressed-Size': compressedBuffer.byteLength.toString()
-                }
+            const fileName = `${crypto.randomUUID()}.webp`;
+
+            // Upload to R2
+            await env.BUCKET.put(fileName, compressedBuffer, {
+                httpMetadata: { contentType: 'image/webp' }
+            });
+
+            // Construct public URL
+            const requestUrl = new URL(request.url);
+            const baseUrl = env.BASE_URL && !requestUrl.hostname.includes('localhost')
+                ? env.BASE_URL
+                : `${requestUrl.protocol}//${requestUrl.host}`;
+
+            const url = `${baseUrl.replace(/\/$/, '')}/${fileName}`;
+
+            return new Response(JSON.stringify({
+                message: 'Image uploaded & compressed successfully!',
+                url: url,
+                fileName: fileName,
+                originalSize: inputBuffer.byteLength,
+                compressedSize: compressedBuffer.byteLength
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
             });
 
         } catch (err) {
