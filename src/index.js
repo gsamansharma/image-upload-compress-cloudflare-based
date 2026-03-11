@@ -45,6 +45,19 @@ export default {
                 return new Response('No file found in request under the field "image"', { status: 400 });
             }
 
+             // Security: File Size Limit
+            const maxSizeMB = parseInt(env.MAX_SIZE_MB) || 10;
+            const MAX_SIZE = maxSizeMB * 1024 * 1024;
+            if (image.size > MAX_SIZE) {
+                return new Response(`File too large. Maximum size is ${maxSizeMB}MB.`, { status: 413 });
+            }
+
+            // Security: Image Type Validation
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'];
+            if (!allowedTypes.includes(image.type)) {
+                return new Response(`Invalid file type: ${image.type}`, { status: 415 });
+            }
+            
             const inputBuffer = await image.arrayBuffer();
 
             // Perform compression to WebP
