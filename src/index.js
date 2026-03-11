@@ -14,16 +14,42 @@ export default {
 
         if (request.method === 'GET') {
             const key = url.pathname.slice(1);
+            if (!key) return new Response('No file specified', { status: 400 });
 
-            if (!key) {
-                return new Response('No file specified', { status: 400 });
+            // Security: Signature Verification (For Private Access)
+            const sig = url.searchParams.get('sig');
+            const exp = url.searchParams.get('exp');
+
+            if (!sig || !exp) {
+                return new Response('Unauthorized: Missing signature or expiry', { status: 401 });
             }
 
+            // Check Expiry
+            if (Date.now() > parseInt(exp)) {
+                return new Response('Unauthorized: Link has expired', { status: 401 });
+            }
+
+            // Verify HMAC Signature (Shared secret with Next.js)
+            const signingSecret = env.SIGNING_SECRET || 'dev-secret';
+            const dataToVerify = `${key}:${exp}`;
+            const encoder = new TextEncoder();
+            const keyData = encoder.encode(signingSecret);
+            const cryptoKey = await crypto.subtle.importKey(
+                'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
+            );
+
+            const sigBuffer = hexToBuffer(sig);
+            const isValid = await crypto.subtle.verify(
+                'HMAC', cryptoKey, sigBuffer, encoder.encode(dataToVerify)
+            );
+
+            if (!isValid) {
+                return new Response('Unauthorized: Invalid signature', { status: 401 });
+            }
+
+            if (!bucket) return new Response('Server Error: Bucket binding not found', { status: 500 });
             const object = await bucket.get(key);
-
-            if (object === null) {
-                return new Response('File not found', { status: 404 });
-            }
+            if (object === null) return new Response('File not found', { status: 404 });
 
             const headers = new Headers();
             object.writeHttpMetadata(headers);
@@ -77,24 +103,33 @@ export default {
             });
 
             const fileName = `${crypto.randomUUID()}.webp`;
-
-            // Upload to R2
+            if (!bucket) return new Response('Server Error: Bucket binding not found', { status: 500 });
             await bucket.put(fileName, compressedBuffer, {
                 httpMetadata: { contentType: 'image/webp' }
             });
 
-            // Construct public URL
-            const requestUrl = new URL(request.url);
-            const baseUrl = env.BASE_URL && !requestUrl.hostname.includes('localhost')
-                ? env.BASE_URL
-                : `${requestUrl.protocol}//${requestUrl.host}`;
+            const baseUrl = env.BASE_URL && !isLocal ? env.BASE_URL : `${url.protocol}//${url.host}`;
+            const permUrl = `${baseUrl.replace(/\/$/, '')}/${fileName}`;
 
-            const url = `${baseUrl.replace(/\/$/, '')}/${fileName}`;
+            // Generate a Preview Signed URL (for immediate view)
+            const expiryMinutes = parseInt(env.URL_EXPIRY_MINUTES) || 60;
+            const previewExpiry = Date.now() + (expiryMinutes * 60 * 1000);
+            const signingSecret = env.SIGNING_SECRET || 'dev-secret';
+            const dataToSign = `${fileName}:${previewExpiry}`;
+            const encoder = new TextEncoder();
+            const keyData = encoder.encode(signingSecret);
+            const cryptoKey = await crypto.subtle.importKey(
+                'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+            );
+            const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(dataToSign));
+            const sig = bufferToHex(sigBuffer);
+            const signedUrl = `${permUrl}?sig=${sig}&exp=${previewExpiry}`;
 
             return new Response(JSON.stringify({
                 message: 'Image uploaded & compressed successfully!',
-                url: url,
                 fileName: fileName,
+                permanentUrl: permUrl,
+                previewUrl: signedUrl,
                 originalSize: inputBuffer.byteLength,
                 compressedSize: compressedBuffer.byteLength
             }), {
@@ -110,3 +145,18 @@ export default {
         }
     }
 };
+
+// Helper functions for HEX/Buffer conversion
+function bufferToHex(buffer) {
+    return Array.from(new Uint8Array(buffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+function hexToBuffer(hex) {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return bytes.buffer;
+}

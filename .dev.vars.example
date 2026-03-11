@@ -1,6 +1,9 @@
 # Upload Security
 AUTH_KEY=your_secret_key
 
+# URL Signing (Security)
+SIGNING_SECRET=your_signing_secret
+
 # Image Optimization
 IMAGE_QUALITY=80
 
@@ -11,3 +14,4 @@ ALLOWED_DOMAIN=images.example.com
 # R2 Configuration
 R2_BINDING=blob
 MAX_SIZE_MB=10
+URL_EXPIRY_MINUTES=60
