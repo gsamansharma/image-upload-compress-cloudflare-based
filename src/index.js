@@ -2,9 +2,17 @@ import { optimizeImage } from 'wasm-image-optimization';
 
 export default {
     async fetch(request, env, ctx) {
+        const url = new URL(request.url);
         const bucket = env[env.R2_BINDING || 'blob'];
+
+        // Security: Domain Lockdown (Allow localhost for dev)
+        const host = request.headers.get('Host');
+        const isLocal = host && host.includes('localhost');
+        if (!isLocal && env.ALLOWED_DOMAIN && host !== env.ALLOWED_DOMAIN) {
+            return new Response('Access denied: Unauthorized domain.', { status: 403 });
+        }
+
         if (request.method === 'GET') {
-            const url = new URL(request.url);
             const key = url.pathname.slice(1);
 
             if (!key) {

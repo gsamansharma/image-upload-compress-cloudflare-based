@@ -6,6 +6,7 @@ IMAGE_QUALITY=80
 
 # Domain Settings
 BASE_URL=https://images.example.com
+ALLOWED_DOMAIN=images.example.com
 
 # R2 Configuration
 R2_BINDING=blob
