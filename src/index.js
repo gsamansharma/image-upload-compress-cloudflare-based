@@ -2,6 +2,7 @@ import { optimizeImage } from 'wasm-image-optimization';
 
 export default {
     async fetch(request, env, ctx) {
+        const bucket = env[env.R2_BINDING || 'blob'];
         if (request.method === 'GET') {
             const url = new URL(request.url);
             const key = url.pathname.slice(1);
@@ -10,7 +11,7 @@ export default {
                 return new Response('No file specified', { status: 400 });
             }
 
-            const object = await env.BUCKET.get(key);
+            const object = await bucket.get(key);
 
             if (object === null) {
                 return new Response('File not found', { status: 404 });
@@ -57,7 +58,7 @@ export default {
             const fileName = `${crypto.randomUUID()}.webp`;
 
             // Upload to R2
-            await env.BUCKET.put(fileName, compressedBuffer, {
+            await bucket.put(fileName, compressedBuffer, {
                 httpMetadata: { contentType: 'image/webp' }
             });
 
