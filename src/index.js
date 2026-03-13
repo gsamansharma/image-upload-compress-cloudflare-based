@@ -95,25 +95,36 @@ export default {
             }
 
             // Security: Image Type Validation
-            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'];
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'image/svg+xml'];
             if (!allowedTypes.includes(image.type)) {
                 return new Response(`Invalid file type: ${image.type}`, { status: 415 });
             }
             
             const inputBuffer = await image.arrayBuffer();
 
-            // Perform compression to WebP
-            const quality = parseInt(env.IMAGE_QUALITY) || 80;
-            const compressedBuffer = await optimizeImage({
-                image: inputBuffer,
-                quality: quality,
-                format: 'webp'
-            });
+            let finalBuffer, finalType, finalExt;
 
-            const fileName = `${crypto.randomUUID()}.webp`;
+            if (image.type === 'image/svg+xml') {
+                // SVGs do not need optimization
+                finalBuffer = inputBuffer;
+                finalType = 'image/svg+xml';
+                finalExt = 'svg';
+            } else {
+                // Perform compression to WebP for standard images
+                const quality = parseInt(env.IMAGE_QUALITY) || 80;
+                finalBuffer = await optimizeImage({
+                    image: inputBuffer,
+                    quality: quality,
+                    format: 'webp'
+                });
+                finalType = 'image/webp';
+                finalExt = 'webp';
+            }
+
+            const fileName = `${crypto.randomUUID()}.${finalExt}`;
             if (!bucket) return new Response('Server Error: Bucket binding not found', { status: 500 });
-            await bucket.put(fileName, compressedBuffer, {
-                httpMetadata: { contentType: 'image/webp' }
+            await bucket.put(fileName, finalBuffer, {
+                httpMetadata: { contentType: finalType }
             });
 
             const baseUrl = env.BASE_URL && !isLocal ? env.BASE_URL : `${url.protocol}//${url.host}`;
