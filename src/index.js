@@ -6,10 +6,18 @@ export default {
         const bucket = env[env.R2_BINDING || 'blob'];
 
         // Security: Domain Lockdown (Allow localhost for dev)
-        const host = request.headers.get('Host');
+        const host = request.headers.get('Host')?.split(':')[0]; // Remove port if present
         const isLocal = host && host.includes('localhost');
-        if (!isLocal && env.ALLOWED_DOMAIN && host !== env.ALLOWED_DOMAIN) {
-            return new Response('Access denied: Unauthorized domain.', { status: 403 });
+
+        // Debug logging for production troubleshooting
+        if (env.ALLOWED_DOMAIN) {
+            const allowedDomains = env.ALLOWED_DOMAIN.split(',').map(d => d.trim());
+            const isAllowed = allowedDomains.includes(host);
+            console.log(`[Domain Check] Host: "${host}", Allowed: "${env.ALLOWED_DOMAIN}", Match: ${isAllowed}`);
+
+            if (!isLocal && !isAllowed) {
+                return new Response(`Access denied: Unauthorized domain. (Host: ${host})`, { status: 403 });
+            }
         }
 
         if (request.method === 'GET') {
