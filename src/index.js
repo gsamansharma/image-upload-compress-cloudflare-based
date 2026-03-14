@@ -101,16 +101,13 @@ export default {
             }
             
             const inputBuffer = await image.arrayBuffer();
+            let finalBuffer = inputBuffer;
+            let finalType = image.type;
+            let extension = image.type.split('/')[1];
+            if (extension === 'svg+xml') extension = 'svg';
 
-            let finalBuffer, finalType, finalExt;
-
-            if (image.type === 'image/svg+xml') {
-                // SVGs do not need optimization
-                finalBuffer = inputBuffer;
-                finalType = 'image/svg+xml';
-                finalExt = 'svg';
-            } else {
-                // Perform compression to WebP for standard images
+            // Perform compression to WebP unless it's an SVG
+            if (image.type !== 'image/svg+xml') {
                 const quality = parseInt(env.IMAGE_QUALITY) || 80;
                 finalBuffer = await optimizeImage({
                     image: inputBuffer,
@@ -118,10 +115,10 @@ export default {
                     format: 'webp'
                 });
                 finalType = 'image/webp';
-                finalExt = 'webp';
+                extension = 'webp';
             }
 
-            const fileName = `${crypto.randomUUID()}.${finalExt}`;
+            const fileName = `${crypto.randomUUID()}.${extension}`;
             if (!bucket) return new Response('Server Error: Bucket binding not found', { status: 500 });
             await bucket.put(fileName, finalBuffer, {
                 httpMetadata: { contentType: finalType }
@@ -150,7 +147,7 @@ export default {
                 permanentUrl: permUrl,
                 previewUrl: signedUrl,
                 originalSize: inputBuffer.byteLength,
-                compressedSize: compressedBuffer.byteLength
+                compressedSize: finalBuffer.byteLength
             }), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json' }
